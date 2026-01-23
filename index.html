@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Secure Local Record App</title>
+
+<style>
+body{
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg,#667eea,#764ba2);
+  min-height:100vh;
+  margin:0;
+  padding:20px;
+}
+
+/* LOGOUT BUTTON */
+.logout-btn{
+  position: fixed;
+  top: 15px;
+  right: 20px;
+  background:#e74c3c;
+  z-index:1000;
+}
+
+/* MAIN UI */
+.box{
+  background:#fff;
+  padding:20px;
+  border-radius:10px;
+  max-width:900px;
+  margin:auto;
+  box-shadow:0 10px 25px rgba(0,0,0,0.2);
+}
+input,button{
+  padding:8px 10px;
+  margin:5px 0;
+  border-radius:5px;
+  border:1px solid #ccc;
+}
+input{ width:calc(100% - 22px); }
+button{
+  background:#667eea;
+  color:#fff;
+  border:none;
+  cursor:pointer;
+}
+button:hover{ background:#556cd6; }
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:15px;
+}
+th{
+  background:#667eea;
+  color:#fff;
+}
+th,td{
+  padding:8px;
+  border:1px solid #ddd;
+}
+.edit-btn{ background:#f39c12; }
+.action-btn{ background:#e74c3c; }
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div class="box" id="loginBox">
+  <h2>SERVICE REQUEST</h2>
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- LOGOUT (TOP RIGHT) -->
+<button class="logout-btn" id="logoutBtn" onclick="logout()" style="display:none">
+  Logout
+</button>
+
+<!-- APP -->
+<div class="box" id="appBox" style="display:none">
+  <h2>SERVICE REQUEST DATA</h2>
+
+  <input id="number" placeholder="Number">
+  <input id="fullName" placeholder="Name">
+  <input id="phone" placeholder="Phone">
+  <input id="address" placeholder="Address">
+  <input id="city" placeholder="City">
+  <input id="date" type="date">
+
+  <button onclick="addRecord()">Save</button>
+
+  <h3>Search by Number</h3>
+  <input id="search" placeholder="Enter number" oninput="loadRecords()">
+
+  <table>
+    <thead>
+      <tr>
+        <th>Number</th><th>Name</th><th>Phone</th>
+        <th>Address</th><th>City</th><th>Date</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="table"></tbody>
+  </table>
+</div>
+
+<script>
+/* ===== PASSWORD ===== */
+const PASSWORD_HASH = "MTIzNA==";
+const hash = t => btoa(t);
+
+/* ===== DB ===== */
+let db;
+const req = indexedDB.open("RecordDB",1);
+
+req.onupgradeneeded = e=>{
+  e.target.result.createObjectStore("records",{
+    keyPath:"id",
+    autoIncrement:true
+  });
+};
+
+req.onsuccess = e=>{ db = e.target.result; };
+
+/* ===== LOGIN ===== */
+function login(){
+  if(!db){ alert("Database loading..."); return; }
+  if(hash(password.value) === PASSWORD_HASH){
+    loginBox.style.display="none";
+    appBox.style.display="block";
+    logoutBtn.style.display="block";
+    loadRecords();
+  }else{
+    alert("Wrong password");
+  }
+}
+
+function logout(){
+  location.reload();
+}
+
+/* ===== ADD ===== */
+function addRecord(){
+  if(!number.value || !fullName.value){
+    alert("Number and Name required");
+    return;
+  }
+
+  const tx = db.transaction("records","readwrite");
+  tx.objectStore("records").add({
+    number:number.value.trim(),
+    fullName:fullName.value.trim(),
+    phone:phone.value.trim(),
+    address:address.value.trim(),
+    city:city.value.trim(),
+    date:date.value
+  });
+
+  tx.oncomplete = ()=>{
+    document.querySelectorAll("#appBox input").forEach(i=>i.value="");
+    loadRecords();
+  };
+}
+
+/* ===== LOAD ===== */
+function loadRecords(){
+  table.innerHTML="";
+  const key = search.value.trim();
+
+  db.transaction("records")
+    .objectStore("records")
+    .openCursor().onsuccess = e=>{
+      const c = e.target.result;
+      if(!c) return;
+
+      if(!key || c.value.number.includes(key)){
+        table.innerHTML += `
+<tr>
+  <td>${c.value.number}</td>
+  <td>${c.value.fullName}</td>
+  <td>${c.value.phone}</td>
+  <td>${c.value.address}</td>
+  <td>${c.value.city}</td>
+  <td>${c.value.date}</td>
+  <td>
+    <button class="edit-btn" onclick="edit(${c.key})">Edit</button>
+    <button class="action-btn" onclick="del(${c.key})">Delete</button>
+  </td>
+</tr>`;
+      }
+      c.continue();
+    };
+}
+
+/* ===== DELETE WITH CONFIRM ===== */
+function del(id){
+  if(!confirm("❗ Are you sure you want to delete this record?")) return;
+  const tx = db.transaction("records","readwrite");
+  tx.objectStore("records").delete(id);
+  tx.oncomplete = loadRecords;
+}
+
+/* ===== EDIT ===== */
+function edit(id){
+  const tx = db.transaction("records","readwrite");
+  const store = tx.objectStore("records");
+
+  store.get(id).onsuccess = e=>{
+    const r = e.target.result;
+    r.fullName = prompt("Name", r.fullName);
+    r.phone = prompt("Phone", r.phone);
+    r.address = prompt("Address", r.address);
+    r.city = prompt("City", r.city);
+    r.date = prompt("Date", r.date);
+    store.put(r);
+  };
+
+  tx.oncomplete = loadRecords;
+}
+</script>
+
+</body>
+</html>
